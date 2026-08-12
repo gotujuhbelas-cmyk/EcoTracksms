@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache">
+<title>EcoTRACK SMS - CV Rezeki Amanah Jaya Group</title>
+<link rel="icon" type="image/png" href="logo.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2e7d32">
+<link rel="apple-touch-icon" href="logo.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EcoTRACK SMS">
+</head>
+<body>
+
+<div class="splash" id="splashScreen">
+  <img src="logo.png" alt="RAJ Logo" class="logo-large" onerror="this.style.display='none'">
+  <h1>EcoTRACK</h1>
+  <p>CV REZEKI AMANAH JAYA Group</p>
+  <p style="font-size:.85rem;opacity:.7">Supplier &amp; Waste Solution Partner</p>
+  <div class="loader"></div>
+</div>
+
+<div id="loadingOverlay" class="loading-overlay hidden"><div class="spinner"></div><p id="loadingText">Memuat data...</p></div>
+
+<div id="publicView" class="hidden">
+  <nav class="navbar">
+    <div class="logo">
+      <img src="logo.png" class="logo-img" onerror="this.style.display='none'">
+      <div class="logo-text"><span class="brand">EcoTRACK</span><span class="sub">CV Rezeki Amanah Jaya</span></div>
+    </div>
+    <button class="menu-toggle" type="button" aria-label="Toggle menu">☰</button>
+    <div class="nav-links" id="navLinks">
+      <a href="#dashboard">Dashboard</a>
+      <a href="#trackingPublic">🗺️ Live Tracking</a>
+      <a href="#statistik">Statistik</a>
+      <a href="#tentang">Tentang</a>
+      <a href="#driver" onclick="showDriverTracking()">🚛 Driver</a>
+      <button class="btn-login" onclick="showLogin()">Login</button>
+    </div>
+  </nav>
+  <section class="hero">
+    <h1>🌱 EcoTRACK</h1>
+    <p>Sistem pemantauan pengambilan &amp; pengolahan sampah untuk <b>Summarecon Mall Serpong</b></p>
+  </section>
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-card"><span class="stat-icon">🚛</span><div class="stat-label">Total Pengambilan</div><div class="stat-value" id="pubTotalPickup">0</div></div>
+      <div class="stat-card orange"><span class="stat-icon">⚖️</span><div class="stat-label">Total Sampah (kg)</div><div class="stat-value" id="pubTotalWeight">0</div></div>
+      <div class="stat-card blue"><span class="stat-icon">♻️</span><div class="stat-label">Diolah (kg)</div><div class="stat-value" id="pubProcessed">0</div></div>
+      <div class="stat-card red"><span class="stat-icon">🗑️</span><div class="stat-label">Residu (kg)</div><div class="stat-value" id="pubResidue">0</div></div>
+    </div>
+    <div id="trackingPublic" class="section">
+      <h2>🗺️ Live Tracking Armada</h2>
+      <div style="position:relative">
+        <div id="mapPublic" class="map-container"></div>
+        <div class="map-overlay" id="mapOverlay">
+          <div class="map-overlay-content">
+            <h3>🔒 Belum Ada Armada Aktif</h3>
+            <button class="btn" onclick="showDriverTracking()">🚛 Mulai Share Lokasi</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="statistik" class="section">
+      <h2>📈 Statistik</h2>
+      <div class="chart-container"><canvas id="pubChart"></canvas></div>
+    </div>
+    <div class="section">
+      <h2>📋 Data Terakhir</h2>
+      <div class="table-wrapper"><table>
+        <thead><tr><th>Tanggal</th><th>Jenis</th><th>Berat</th><th>Status</th><th>Foto</th></tr></thead>
+        <tbody id="pubTable"></tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="footer"><p>EcoTRACK © 2025</p></div>
+</div>
+
+<div id="loginView" class="hidden">
+  <div class="login-container">
+    <div class="login-box">
+      <img src="logo.png" class="logo-large" style="margin:0 auto 20px;display:block" onerror="this.style.display='none'">
+      <h2>🔐 EcoTRACK</h2>
+      <form onsubmit="doFirebaseLogin(event)">
+        <div class="form-group"><label>Email</label><input type="email" id="loginEmail" required></div>
+        <div class="form-group"><label>Password</label><input type="password" id="loginPassword" required></div>
+        <button type="submit" class="btn">Masuk</button>
+      </form>
+      <div class="login-error" id="loginError"></div>
+      <div style="text-align:center;margin-top:15px"><a href="#" onclick="showPublic()">← Kembali</a></div>
+    </div>
+  </div>
+</div>
+
+<div id="dashboardView" class="hidden">
+  <nav class="navbar">
+    <div class="logo">
+      <img src="logo.png" class="logo-img" onerror="this.style.display='none'">
+      <div class="logo-text"><span class="brand" id="dashBrand">Dashboard</span><span class="sub">EcoTRACK</span></div>
+    </div>
+    <button class="menu-toggle" type="button" aria-label="Toggle menu">☰</button>
+    <div class="nav-links" id="dashNavLinks">
+      <a href="#dashTracking">🗺️ Live Tracking</a>
+      <a href="#dashShare" id="navShare">📡 Share Lokasi</a>
+      <a href="#dashInput" id="navInput">➕ Input</a>
+      <a href="#dashData" id="navData">📋 Data</a>
+      <a href="#dashReport" id="navReport">📊 Laporan</a>
+      <div class="user-info"><span>👤</span><span id="dashEmail">-</span><span class="role-badge" id="roleBadge">USER</span></div>
+      <button onclick="doFirebaseLogout()">🚪 Logout</button>
+    </div>
+  </nav>
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-card"><span class="stat-icon">🚛</span><div class="stat-label">Total Pengambilan</div><div class="stat-value" id="stPickup">0</div></div>
+      <div class="stat-card orange"><span class="stat-icon">⚖️</span><div class="stat-label">Total Sampah (kg)</div><div class="stat-value" id="stWeight">0</div></div>
+      <div class="stat-card blue"><span class="stat-icon">♻️</span><div class="stat-label">Diolah (kg)</div><div class="stat-value" id="stProcessed">0</div></div>
+      <div class="stat-card red"><span class="stat-icon">🗑️</span><div class="stat-label">Residu (kg)</div><div class="stat-value" id="stResidue">0</div></div>
+    </div>
+
+    <div id="dashTracking" class="section">
+      <h2>🗺️ Live Tracking Armada</h2>
+      <div id="mapDash" class="map-container"></div>
+      <div class="table-wrapper" style="margin-top:20px"><table>
+        <thead><tr><th>Armada</th><th>Driver</th><th>Update</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody id="dashArmadaBody"><tr><td colspan="5" style="text-align:center;padding:20px">Menunggu...</td></tr></tbody>
+      </table></div>
+      <h3 style="margin:25px 0 10px;color:var(--primary)">📜 Riwayat Rute</h3>
+      <div class="table-wrapper"><table>
+        <thead><tr><th>Mulai</th><th>Selesai</th><th>Armada</th><th>Driver</th><th>Jarak</th><th>Titik</th><th>Aksi</th></tr></thead>
+        <tbody id="routeTableDash"><tr><td colspan="7" style="text-align:center;padding:15px">Memuat...</td></tr></tbody>
+      </table></div>
+    </div>
+
+    <div id="dashShare" class="section">
+      <h2>📡 Share Lokasi Armada</h2>
+      <div class="form-grid">
+        <div class="form-group"><label>Nama Driver</label><input type="text" id="dsDriverName"></div>
+        <div class="form-group"><label>Armada</label><input type="text" id="dsVehicleName" placeholder="Truk B 1234 CD"></div>
+      </div>
+      <div class="btn-group">
+        <button class="btn" id="btnStartDs" onclick="startDashSharing()">📡 Mulai Share</button>
+        <button class="btn btn-danger" id="btnStopDs" onclick="stopSharing()" style="display:none">⏹️ Berhenti</button>
+      </div>
+      <div id="dsStatus" style="margin-top:15px;font-size:.9rem;color:var(--gray)"></div>
+      <div id="mapDashShare" class="map-container" style="height:300px;margin-top:15px"></div>
+    </div>
+
+    <div id="dashInput" class="section">
+      <h2>➕ Input Data Pengambilan</h2>
+      <div class="info-box">💡 Foto otomatis dikompresi + timestamp. Max 5 foto.</div>
+      <form onsubmit="addData(event)">
+        <div class="form-grid">
+          <div class="form-group"><label>Tanggal *</label><input type="date" id="fTanggal" required></div>
+          <div class="form-group"><label>Jenis *</label><select id="fJenis" required><option value="">-- Pilih --</option><option>Organik</option><option>Anorganik</option><option>B3</option><option>Campuran</option></select></div>
+          <div class="form-group"><label>Berat (kg) *</label><input type="number" id="fBerat" step="0.1" required></div>
+          <div class="form-group"><label>Diolah (kg)</label><input type="number" id="fDiolah" step="0.1"></div>
+          <div class="form-group"><label>Residu (kg)</label><input type="number" id="fResidu" step="0.1"></div>
+          <div class="form-group"><label>Petugas *</label><input type="text" id="fPetugas" required></div>
+        </div>
+        <div class="form-group"><label>Catatan</label><textarea id="fCatatan" rows="2"></textarea></div>
+        
+        <!-- ═══ FOTO: KAMERA + UPLOAD ═══ -->
+        <div class="form-group">
+          <label>Foto (Max 5)</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <button type="button" class="btn" onclick="openCamera()" style="background:#2196f3">📷 Ambil Foto</button>
+            <label class="btn" style="background:#757575;cursor:pointer">
+              🖼️ Pilih dari Galeri
+              <input type="file" id="fFoto" multiple accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+            </label>
+          </div>
+          <div class="file-list" id="fileList"></div>
+          <div id="cameraPreview" style="display:none;margin-top:10px">
+            <video id="cameraVideo" autoplay playsinline style="width:100%;max-width:400px;border-radius:8px"></video>
+            <div style="display:flex;gap:10px;margin-top:10px">
+              <button type="button" class="btn" onclick="capturePhoto()">📸 Jepret</button>
+              <button type="button" class="btn btn-danger" onclick="closeCamera()">✖ Tutup</button>
+            </div>
+          </div>
+          <canvas id="cameraCanvas" style="display:none"></canvas>
+        </div>
+        
+        <div class="btn-group"><button type="submit" class="btn" id="btnSave">💾 Simpan</button></div>
+      </form>
+    </div>
+
+    <div id="dashData" class="section">
+      <h2>📋 Daftar Data</h2>
+      <div class="table-wrapper"><table>
+        <thead><tr><th>Tanggal</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th><th>Foto</th><th id="thAksi">Aksi</th></tr></thead>
+        <tbody id="dashDataTable"></tbody>
+      </table></div>
+    </div>
+
+    <div id="dashReport" class="section">
+      <h2>📊 Laporan</h2>
+      <div class="report-filter">
+        <div class="form-group"><label>Periode</label><select id="reportPeriod" onchange="toggleCustomDate()"><option value="daily">Harian</option><option value="weekly">Mingguan</option><option value="monthly">Bulanan</option><option value="custom">Custom</option></select></div>
+        <div class="form-group" id="dailyDateGroup"><label>Tanggal</label><input type="date" id="reportDate" onchange="generateReport()"></div>
+        <div class="form-group hidden" id="weeklyDateGroup"><label>Minggu</label><input type="date" id="reportWeekDate" onchange="generateReport()"></div>
+        <div class="form-group hidden" id="monthlyDateGroup"><label>Bulan</label><input type="month" id="reportMonth" onchange="generateReport()"></div>
+        <div class="form-group hidden" id="customDateGroup"><label>Dari</label><input type="date" id="reportDateFrom" onchange="generateReport()"></div>
+        <div class="form-group hidden" id="customDateGroup2"><label>Sampai</label><input type="date" id="reportDateTo" onchange="generateReport()"></div>
+        <div class="form-group" style="display:flex;align-items:end"><button class="btn" onclick="generateReport()">🔄 Generate</button></div>
+      </div>
+      <div class="report-summary">
+        <div class="summary-card"><div class="summary-label">Total</div><div class="summary-value" id="rptTotalPickup">0</div></div>
+        <div class="summary-card orange"><div class="summary-label">Berat</div><div class="summary-value" id="rptTotalWeight">0</div></div>
+        <div class="summary-card blue"><div class="summary-label">Diolah</div><div class="summary-value" id="rptTotalProcessed">0</div></div>
+        <div class="summary-card red"><div class="summary-label">Residu</div><div class="summary-value" id="rptTotalResidue">0</div></div>
+      </div>
+      <div style="margin-bottom:25px"><h3 style="color:var(--primary)">📈 Tren</h3><div class="chart-container"><canvas id="reportChart"></canvas></div></div>
+      <div class="table-wrapper"><table>
+        <thead><tr><th>Tanggal</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th></tr></thead>
+        <tbody id="reportTableBody"></tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="footer"><p>EcoTRACK © 2025</p></div>
+</div>
+
+<div id="driverTrackingView" class="hidden">
+  <div class="login-container">
+    <div class="login-box" style="max-width:560px">
+      <img src="logo.png" class="logo-large" style="margin:0 auto 15px;display:block;max-width:140px" onerror="this.style.display='none'">
+      <h2>🚛 Driver Tracking</h2>
+      <form onsubmit="startPublicSharing(event)" id="driverForm">
+        <div class="form-group"><label>Nama Driver</label><input type="text" id="driverName" required></div>
+        <div class="form-group"><label>Armada</label><input type="text" id="vehicleName" required></div>
+        <button type="submit" class="btn" id="btnStartTrack">📡 Mulai Share Lokasi</button>
+        <button type="button" class="btn btn-danger" onclick="stopSharing()" id="btnStopTrack" style="display:none">⏹️ Berhenti</button>
+      </form>
+      <div id="driverStatus" style="margin-top:15px;font-size:.9rem;color:var(--gray)"></div>
+      <div id="mapShare" class="map-container" style="height:300px;margin-top:15px"></div>
+      <div style="text-align:center;margin-top:15px"><a href="#" onclick="showPublic()">← Kembali</a></div>
+    </div>
+  </div>
+</div>
+
+<div id="editModal" class="modal">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeEditModal()">×</button>
+    <h2>✏️ Edit Data</h2>
+    <form onsubmit="updateData(event)">
+      <input type="hidden" id="eId">
+      <div class="form-grid">
+        <div class="form-group"><label>Tanggal *</label><input type="date" id="eTanggal" required></div>
+        <div class="form-group"><label>Jenis *</label><select id="eJenis" required><option>Organik</option><option>Anorganik</option><option>B3</option><option>Campuran</option></select></div>
+        <div class="form-group"><label>Berat *</label><input type="number" id="eBerat" step="0.1" required></div>
+        <div class="form-group"><label>Diolah</label><input type="number" id="eDiolah" step="0.1"></div>
+        <div class="form-group"><label>Residu</label><input type="number" id="eResidu" step="0.1"></div>
+        <div class="form-group"><label>Petugas *</label><input type="text" id="ePetugas" required></div>
+      </div>
+      <div class="form-group"><label>Catatan</label><textarea id="eCatatan" rows="2"></textarea></div>
+      <div class="form-group"><label>Foto Existing</label><div class="photo-gallery" id="eExistingPhotos"></div></div>
+      <div class="form-group"><label>Tambah Foto</label>
+        <label class="file-upload" for="eFoto"><div class="upload-icon">📷</div><div>Tambah foto</div><input type="file" id="eFoto" multiple accept="image/*" onchange="handleEditFileSelect(event)"></label>
+        <div class="file-list" id="eFileList"></div>
+      </div>
+      <div class="btn-group"><button type="submit" class="btn">💾 Update</button><button type="button" class="btn btn-secondary" onclick="closeEditModal()">Batal</button></div>
+    </form>
+  </div>
+</div>
+
+<div id="photoModal" class="modal" onclick="closePhotoModal()">
+  <div class="modal-content" style="max-width:900px" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closePhotoModal()">×</button>
+    <h2>🖼️ Galeri Foto</h2>
+    <div id="photoViewer"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SCRIPTS — URUTAN WAJIB (cache buster v10)
+═══════════════════════════════════════════ -->
+<script src="app.js?v=13"></script>
+<script src="antimacet.js?v=17"></script>
+<script src="amview.js?v=9"></script>
+<script src="adminctl.js?v=9"></script>
+<script src="addon.js?v=12"></script>
+
+<!-- PWA Service Worker -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').catch(function(e){});
+  });
+}
+</script>
+
+<!-- Init Live Tracking -->
+<script>
+(function() {
+  window.adminStopSelected = function(driverId) {
+    if (!driverId) { if(typeof toast==='function') toast("Driver ID kosong.","error"); return; }
+    if (typeof adminStopVehicle === "function") {
+      adminStopVehicle(driverId);
+    } else if (typeof db !== "undefined") {
+      db.collection("live_tracking").doc(driverId).set({
+        isActive: false,
+        endTime: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true }).then(function() {
+        if(typeof toast==='function') toast("Tracking dihentikan.","success");
+      }).catch(function(e){ if(typeof toast==='function') toast("Gagal: "+e.message,"error"); });
+    }
+  };
+
+  function initListeners() {
+    if (typeof listenToLiveTracking === "function") {
+      listenToLiveTracking(null, "public", true);
+      listenToLiveTracking("dashArmadaBody", "dash", false);
+    }
+  }
+
+  function checkDriverSession() {
+    var saved = localStorage.getItem("am_session");
+    if (!saved) return;
+    var btnStart = document.getElementById("btnStartTrack");
+    var btnStop = document.getElementById("btnStopTrack");
+    if (btnStart && btnStop) {
+      try {
+        var sess = JSON.parse(saved);
+        btnStart.textContent = "🔄 Lanjutkan Berbagi Lokasi";
+        btnStop.style.display = "none";
+        var dn = document.getElementById("driverName");
+        var vn = document.getElementById("vehicleName");
+        if (dn && !dn.value && sess.driverName) dn.value = sess.driverName;
+        if (vn && !vn.value && sess.vehicleName) vn.value = sess.vehicleName;
+      } catch(e) { localStorage.removeItem("am_session"); }
+    }
+  }
+
+  window.addEventListener("load", function() {
+    setTimeout(function() {
+      initListeners();
+      checkDriverSession();
+    }, 2500);
+  });
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════
+     KAMERA + TIMESTAMP FOTO
+═══════════════════════════════════════════ -->
+<script>
+var cameraStream = null;
+var capturedPhotos = [];
+
+function openCamera() {
+  var preview = document.getElementById('cameraPreview');
+  var video = document.getElementById('cameraVideo');
+  
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // Fallback: buka file picker dengan capture kamera
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = function(e) {
+      handleFileSelect(e);
+    };
+    input.click();
+    return;
+  }
+  
+  navigator.mediaDevices.getUserMedia({ 
+    video: { facingMode: 'environment' }, 
+    audio: false 
+  })
+  .then(function(stream) {
+    cameraStream = stream;
+    video.srcObject = stream;
+    preview.style.display = 'block';
+  })
+  .catch(function(err) {
+    console.error('Camera error:', err);
+    // Fallback ke file picker
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = function(e) { handleFileSelect(e); };
+    input.click();
+  });
+}
+
+function capturePhoto() {
+  var video = document.getElementById('cameraVideo');
+  var canvas = document.getElementById('cameraCanvas');
+  var ctx = canvas.getContext('2d');
+  
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+  
+  // Tambahkan timestamp di foto
+  var now = new Date();
+  var timestamp = now.toLocaleString('id-ID', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  
+  // Background untuk timestamp
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+  
+  // Teks timestamp
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 16px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('📅 ' + timestamp, 10, canvas.height - 12);
+  
+  // Convert ke blob
+  canvas.toBlob(function(blob) {
+    var file = new File([blob], 'foto_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+    capturedPhotos.push(file);
+    updateFileList();
+    if(typeof toast==='function') toast('📸 Foto diambil dengan timestamp!', 'success');
+  }, 'image/jpeg', 0.85);
+  
+  closeCamera();
+}
+
+function closeCamera() {
+  var preview = document.getElementById('cameraPreview');
+  var video = document.getElementById('cameraVideo');
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(function(track) { track.stop(); });
+    cameraStream = null;
+  }
+  video.srcObject = null;
+  preview.style.display = 'none';
+}
+
+function updateFileList() {
+  var list = document.getElementById('fileList');
+  if (!list) return;
+  
+  var allFiles = capturedPhotos.concat(window.selectedFiles || []);
+  list.innerHTML = allFiles.map(function(f, i) {
+    return '<div class="file-item"><span>📷 ' + f.name + '</span><span style="color:#888;font-size:.8rem">' + (f.size/1024).toFixed(1) + ' KB</span></div>';
+  }).join('');
+}
+
+// Override handleFileSelect untuk include captured photos
+var originalHandleFileSelect = window.handleFileSelect;
+window.handleFileSelect = function(e) {
+  var files = Array.from(e.target.files).slice(0, 5);
+  window.selectedFiles = files;
+  updateFileList();
+};
+</script>
+
+<!-- ═══════════════════════════════════════════
+     HAMBURGER MENU FIX (STANDALONE)
+═══════════════════════════════════════════ -->
+<script>
+(function() {
+  function initHamburger() {
+    var toggles = document.querySelectorAll('.menu-toggle');
+    if (toggles.length === 0) {
+      setTimeout(initHamburger, 500);
+      return;
+    }
+    
+    toggles.forEach(function(btn) {
+      btn.onclick = null;
+      btn.removeAttribute('onclick');
+      
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        var navbar = btn.closest('.navbar');
+        if (!navbar) return;
+        
+        var navLinks = navbar.querySelector('.nav-links');
+        if (!navLinks) return;
+        
+        var isShowing = navLinks.classList.contains('show');
+        
+        // Tutup semua menu dulu
+        document.querySelectorAll('.nav-links.show').forEach(function(m) {
+          m.classList.remove('show');
+        });
+        
+        // Toggle menu ini
+        if (!isShowing) {
+          navLinks.classList.add('show');
+        }
+        
+        console.log('🍔 Hamburger:', !isShowing ? 'OPEN' : 'CLOSE');
+      });
+    });
+    
+    // Tutup saat klik di luar
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.nav-links') && !e.target.closest('.menu-toggle')) {
+        document.querySelectorAll('.nav-links.show').forEach(function(m) {
+          m.classList.remove('show');
+        });
+      }
+    });
+    
+    // Tutup saat klik link
+    document.querySelectorAll('.nav-links a, .nav-links button').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var nav = el.closest('.nav-links');
+        if (nav) nav.classList.remove('show');
+      });
+    });
+    
+    console.log('✅ Hamburger menu initialized:', toggles.length, 'buttons');
+  }
+  
+  // Jalankan berkali-kali sampai berhasil
+  var attempts = 0;
+  function tryInit() {
+    attempts++;
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initHamburger);
+    } else {
+      initHamburger();
+    }
+    if (attempts < 5) {
+      setTimeout(tryInit, 1000);
+    }
+  }
+  tryInit();
+})();
+</script>
+
+</body>
+</html>
