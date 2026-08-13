@@ -15,6 +15,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
+db.settings({ experimentalAutoDetectLongPolling: true });
 
 // ═══ SETTINGS DINAMIS (room & client tersimpan di Firestore) ═══
 let SETTINGS = {
