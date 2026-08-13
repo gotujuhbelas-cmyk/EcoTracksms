@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════
-// app.js — EcoTRACK SMS v13 (Summarecon Mall Serpong)
-console.log("%cAPP.JS SMS v13 — koleksi SAMPAH aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
+// app.js — EcoTRACK SMS v14 (UI DULU, Firestore BELAKANGAN)
+console.log("%cAPP.JS SMS v14 — UI dulu, Firestore belakangan", "color:#2e7d32;font-weight:bold;font-size:14px");
 // ══════════════════════════════════════════════════════════════
 
 const firebaseConfig = {
@@ -124,12 +124,32 @@ function detectRole(user) {
     .catch(() => { currentRole = "user"; return currentRole; });
 }
 
+// ═══ v14: LANGSUNG TAMPILKAN DASHBOARD, ROLE DISUSUL BELAKANGAN ═══
 auth.onAuthStateChanged(user => {
   currentUser = user;
   hideLoading();
-  if (user) { detectRole(user).then(role => showDashboard(user, role)); }
-  else { currentUser = null; currentRole = null; }
+  if (user) {
+    showDashboard(user, currentRole || "user");
+    detectRole(user).then(role => {
+      currentRole = role;
+      window.currentUserRole = role;
+      applyRoleUI(role);
+      const badge = document.getElementById("roleBadge");
+      if (badge) badge.textContent = role.toUpperCase();
+      const brand = document.getElementById("dashBrand");
+      if (brand) brand.textContent = role === "admin" ? "Admin Panel" : role === "driver" ? "Driver Panel" : "Dashboard";
+    });
+  } else { currentUser = null; currentRole = null; }
 });
+
+function applyRoleUI(role) {
+  const navInput = document.getElementById("navInput");
+  const navShare = document.getElementById("navShare");
+  const thAksi = document.getElementById("thAksi");
+  if (role === "admin") { if (navInput) navInput.style.display = ""; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = ""; }
+  else if (role === "driver") { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = "none"; }
+  else { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = "none"; if (thAksi) thAksi.style.display = "none"; }
+}
 
 function showDashboard(user, role) {
   window.currentUserRole = role;
@@ -141,12 +161,7 @@ function showDashboard(user, role) {
   document.getElementById("roleBadge").textContent = role.toUpperCase();
   document.getElementById("dashBrand").textContent = role === "admin" ? "Admin Panel" : role === "driver" ? "Driver Panel" : "Dashboard";
 
-  const navInput = document.getElementById("navInput");
-  const navShare = document.getElementById("navShare");
-  const thAksi = document.getElementById("thAksi");
-  if (role === "admin") { if (navInput) navInput.style.display = ""; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = ""; }
-  else if (role === "driver") { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = "none"; }
-  else { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = "none"; if (thAksi) thAksi.style.display = "none"; }
+  applyRoleUI(role);
 
   setTimeout(() => { initMap("dash"); initMap("dashShare"); updateLiveMap("dash"); loadRouteHistory(); loadDashboardStats(); loadDashData(); }, 300);
 }
@@ -511,12 +526,13 @@ function loadPublicData() {
     });
 }
 
+// ═══ v14: splash dipercepat (2000ms → 800ms) ═══
 window.addEventListener("load", () => {
   setTimeout(() => {
     const splash = document.getElementById("splashScreen");
     if (splash) splash.classList.add("fade-out");
     setTimeout(() => { if (splash) splash.style.display = "none"; if (!currentUser) { showPublic(); loadPublicData(); loadPublicChart(); } }, 500);
-  }, 2000);
+  }, 800);
 });
 
 window.db = db;
