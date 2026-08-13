@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════
-// app.js — EcoTRACK SMS v17 (SECTION PER ROLE — privasi room)
-console.log("%cAPP.JS SMS v17 — section per role aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
+// app.js — EcoTRACK SMS v18 (CACHE ROLE — menu instan, no nunggu)
+console.log("%cAPP.JS SMS v18 — cache role aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
 // ══════════════════════════════════════════════════════════════
 
 const firebaseConfig = {
@@ -40,7 +40,6 @@ function loadSettings(cb) {
   }).catch(() => { initRoomSelects(); if (cb) cb(); });
 }
 
-// Dipakai addon.js untuk alamat surat jalan per client
 window.__roomClient = function(room) {
   const r = SETTINGS.rooms.find(x => x.nama === room);
   return r ? r.client : "";
@@ -59,6 +58,21 @@ window.capturedPhotos = window.capturedPhotos || [];
 window.__roomLock = null;
 
 function roomLocked() { return window.__roomLock || null; }
+
+// ═══ v18: cache role per UID ═══
+function readRoleCache(uid) {
+  try {
+    const c = JSON.parse(localStorage.getItem("rajRole_" + uid) || "null");
+    if (c) return { role: c.role || "user", room: c.room || "ALL" };
+  } catch (e) {}
+  return { role: "user", room: "ALL" };
+}
+function writeRoleCache(uid, role, room) {
+  try { localStorage.setItem("rajRole_" + uid, JSON.stringify({ role: role, room: room })); } catch (e) {}
+}
+function applyRoomLock(role, room) {
+  window.__roomLock = (role === "user" && room && room !== "ALL") ? room : null;
+}
 
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -152,24 +166,31 @@ function doFirebaseLogout() {
   auth.signOut().then(() => { localStorage.removeItem("am_session"); toast("Logout berhasil.", "info"); showPublic(); });
 }
 
+// ═══ v18: detectRole + simpan cache ═══
 function detectRole(user) {
   return db.collection("users").doc(user.uid).get()
     .then(doc => {
       const data = doc.exists ? doc.data() : {};
       currentRole = data.role || "user";
       currentRoom = data.room || "ALL";
+      writeRoleCache(user.uid, currentRole, currentRoom);
       window.currentUserRoom = currentRoom;
-      window.__roomLock = (currentRole === "user" && currentRoom && currentRoom !== "ALL") ? currentRoom : null;
+      applyRoomLock(currentRole, currentRoom);
       return currentRole;
     })
-    .catch(() => { currentRole = "user"; window.__roomLock = null; return currentRole; });
+    .catch(() => { currentRole = "user"; applyRoomLock("user", "ALL"); return currentRole; });
 }
 
+// ═══ v18: pakai cache dulu biar menu INSTAN ═══
 auth.onAuthStateChanged(user => {
   currentUser = user;
   hideLoading();
   if (user) {
-    showDashboard(user, currentRole || "user");
+    const c = readRoleCache(user.uid);
+    currentRole = c.role;
+    currentRoom = c.room;
+    applyRoomLock(c.role, c.room);
+    showDashboard(user, c.role);
     detectRole(user).then(role => {
       currentRole = role;
       window.currentUserRole = role;
