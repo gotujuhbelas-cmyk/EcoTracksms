@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════
-// app.js — EcoTRACK SMS v14 (UI DULU, Firestore BELAKANGAN)
-console.log("%cAPP.JS SMS v14 — UI dulu, Firestore belakangan", "color:#2e7d32;font-weight:bold;font-size:14px");
+// app.js — EcoTRACK SMS v15 (WASTE ROOM + ROLE PER ROOM)
+console.log("%cAPP.JS SMS v15 — waste room aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
 // ══════════════════════════════════════════════════════════════
 
 const firebaseConfig = {
@@ -16,8 +16,12 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
+// ═══ v15: DAFTAR WASTE ROOM ═══
+const ROOMS = ["WR Pasar modern SMS", "WR SMS 1", "WR SMS 2"];
+
 let currentUser = null;
 let currentRole = null;
+let currentRoom = "ALL";
 let maps = {};
 let truckIcon = null;
 let routeHistory = [];
@@ -25,6 +29,9 @@ let unsubRoute = null;
 let selectedFiles = [];
 let editSelectedFiles = [];
 window.capturedPhotos = window.capturedPhotos || [];
+window.__roomLock = null;
+
+function roomLocked() { return window.__roomLock || null; }
 
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -118,13 +125,20 @@ function doFirebaseLogout() {
   auth.signOut().then(() => { localStorage.removeItem("am_session"); toast("Logout berhasil.", "info"); showPublic(); });
 }
 
+// ═══ v15: detect role + room ═══
 function detectRole(user) {
   return db.collection("users").doc(user.uid).get()
-    .then(doc => { currentRole = (doc.exists && doc.data().role) ? doc.data().role : "user"; return currentRole; })
-    .catch(() => { currentRole = "user"; return currentRole; });
+    .then(doc => {
+      const data = doc.exists ? doc.data() : {};
+      currentRole = data.role || "user";
+      currentRoom = data.room || "ALL";
+      window.currentUserRoom = currentRoom;
+      window.__roomLock = (currentRole === "user" && currentRoom && currentRoom !== "ALL") ? currentRoom : null;
+      return currentRole;
+    })
+    .catch(() => { currentRole = "user"; window.__roomLock = null; return currentRole; });
 }
 
-// ═══ v14: LANGSUNG TAMPILKAN DASHBOARD, ROLE DISUSUL BELAKANGAN ═══
 auth.onAuthStateChanged(user => {
   currentUser = user;
   hideLoading();
@@ -138,8 +152,10 @@ auth.onAuthStateChanged(user => {
       if (badge) badge.textContent = role.toUpperCase();
       const brand = document.getElementById("dashBrand");
       if (brand) brand.textContent = role === "admin" ? "Admin Panel" : role === "driver" ? "Driver Panel" : "Dashboard";
+      loadDashboardStats();
+      loadDashData();
     });
-  } else { currentUser = null; currentRole = null; }
+  } else { currentUser = null; currentRole = null; window.__roomLock = null; }
 });
 
 function applyRoleUI(role) {
@@ -149,6 +165,19 @@ function applyRoleUI(role) {
   if (role === "admin") { if (navInput) navInput.style.display = ""; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = ""; }
   else if (role === "driver") { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = "none"; }
   else { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = "none"; if (thAksi) thAksi.style.display = "none"; }
+
+  // v15: user ter-lock room → sembunyikan filter room di laporan
+  const repRoomGroup = document.getElementById("reportRoomGroup");
+  if (repRoomGroup) repRoomGroup.style.display = roomLocked() ? "none" : "";
+}
+
+// ═══ v15: isi dropdown room ═══
+function initRoomSelects() {
+  const f = document.getElementById("fRoom");
+  const r = document.getElementById("reportRoom");
+  const opts = ROOMS.map(x => '<option value="' + x + '">' + x + "</option>").join("");
+  if (f) f.innerHTML = '<option value="">-- Pilih Waste Room --</option>' + opts;
+  if (r) r.innerHTML = '<option value="all">Semua Waste Room</option>' + opts;
 }
 
 function showDashboard(user, role) {
@@ -162,6 +191,7 @@ function showDashboard(user, role) {
   document.getElementById("dashBrand").textContent = role === "admin" ? "Admin Panel" : role === "driver" ? "Driver Panel" : "Dashboard";
 
   applyRoleUI(role);
+  initRoomSelects();
 
   setTimeout(() => { initMap("dash"); initMap("dashShare"); updateLiveMap("dash"); loadRouteHistory(); loadDashboardStats(); loadDashData(); }, 300);
 }
@@ -243,12 +273,15 @@ function deleteRoute(docId) {
     .catch(err => toast("Gagal hapus: " + err.message, "error"));
 }
 
+// ═══ v15: statistik ikut filter room user ═══
 function loadDashboardStats() {
   db.collection("sampah").get()
     .then(snap => {
+      const lock = roomLocked();
       let totalPickup = 0, totalWeight = 0, totalProcessed = 0, totalResidue = 0;
       snap.forEach(doc => {
         const d = doc.data();
+        if (lock && (d.room || "-") !== lock) return;
         totalPickup++;
         totalWeight += d.berat || 0;
         totalProcessed += d.diolah || 0;
@@ -258,13 +291,18 @@ function loadDashboardStats() {
         ["stPickup", totalPickup],
         ["stWeight", totalWeight.toFixed(1) + " kg"],
         ["stProcessed", totalProcessed.toFixed(1) + " kg"],
-        ["stResidue", totalResidue.toFixed(1) + " kg"],
-        ["pubTotalPickup", totalPickup],
-        ["pubTotalWeight", totalWeight.toFixed(1) + " kg"],
-        ["pubProcessed", totalProcessed.toFixed(1) + " kg"],
-        ["pubResidue", totalResidue.toFixed(1) + " kg"]
+        ["stResidue", totalResidue.toFixed(1) + " kg"]
       ];
       ids.forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.textContent = val; });
+
+      // public tetap gabungan semua room
+      let pPickup = 0, pWeight = 0, pProc = 0, pRes = 0;
+      snap.forEach(doc => {
+        const d = doc.data();
+        pPickup++; pWeight += d.berat || 0; pProc += d.diolah || 0; pRes += d.residu || 0;
+      });
+      [["pubTotalPickup", pPickup], ["pubTotalWeight", pWeight.toFixed(1) + " kg"], ["pubProcessed", pProc.toFixed(1) + " kg"], ["pubResidue", pRes.toFixed(1) + " kg"]]
+        .forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.textContent = val; });
     })
     .catch(err => console.warn("[stats]", err));
 }
@@ -317,14 +355,18 @@ function fileToBase64(file) {
   });
 }
 
+// ═══ v15: simpan field room ═══
 async function addData(e) {
   e.preventDefault();
+  const room = document.getElementById("fRoom").value;
+  if (!room) { toast("Pilih waste room terlebih dahulu.", "warning"); return; }
   showLoading("Menyimpan data...");
   try {
     const allFiles = (window.capturedPhotos || []).concat(selectedFiles).slice(0, 5);
     const doc = {
       tanggal: document.getElementById("fTanggal").value,
       jenis: document.getElementById("fJenis").value,
+      room: room,
       berat: parseFloat(document.getElementById("fBerat").value) || 0,
       diolah: parseFloat(document.getElementById("fDiolah").value) || 0,
       residu: parseFloat(document.getElementById("fResidu").value) || 0,
@@ -343,7 +385,7 @@ async function addData(e) {
     }
     doc.fotos = fotoUrls;
     await db.collection("sampah").add(doc);
-    toast("Data berhasil disimpan!", "success");
+    toast("Data " + room + " berhasil disimpan!", "success");
     e.target.reset();
     selectedFiles = [];
     window.capturedPhotos = [];
@@ -359,20 +401,24 @@ async function addData(e) {
   }
 }
 
+// ═══ v15: tabel data + kolom room + filter role ═══
 function loadDashData() {
   const tbody = document.getElementById("dashDataTable");
   if (!tbody) return;
-  db.collection("sampah").orderBy("createdAt", "desc").limit(50)
+  db.collection("sampah").orderBy("createdAt", "desc").limit(100)
     .get()
     .then(snap => {
+      const lock = roomLocked();
       tbody.innerHTML = "";
-      if (snap.empty) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:15px;color:#888">Belum ada data</td></tr>'; return; }
+      let n = 0;
       snap.forEach(doc => {
         const d = doc.data();
+        if (lock && (d.room || "-") !== lock) return;
+        n++;
         const fotos = d.fotos || d.foto || [];
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${d.tanggal}</td><td>${d.jenis}</td><td>${d.berat} kg</td><td>${d.diolah} kg</td><td>${d.residu} kg</td><td>${d.petugas}</td>
+          <td>${d.tanggal}</td><td><b>${d.room || "-"}</b></td><td>${d.jenis}</td><td>${d.berat} kg</td><td>${d.diolah} kg</td><td>${d.residu} kg</td><td>${d.petugas}</td>
           <td>${fotos.length > 0 ? `<button class="btn btn-sm" onclick="showPhotos('${doc.id}')">📷 ${fotos.length}</button>` : "-"}</td>
           <td>
             <button class="btn btn-sm" onclick="openEdit('${doc.id}')">✏️</button>
@@ -381,6 +427,7 @@ function loadDashData() {
         `;
         tbody.appendChild(tr);
       });
+      if (!n) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:15px;color:#888">Belum ada data</td></tr>';
     });
 }
 
@@ -452,8 +499,13 @@ function toggleCustomDate() {
   document.getElementById("customDateGroup2").classList.toggle("hidden", period !== "custom");
 }
 
+// ═══ v15: laporan per waste room ═══
 function generateReport() {
   const period = document.getElementById("reportPeriod").value;
+  const roomSel = document.getElementById("reportRoom");
+  const roomFilter = roomLocked() || (roomSel ? roomSel.value : "all");
+  window.__roomLabel = roomFilter === "all" ? "" : roomFilter;
+
   let start, end;
   if (period === "daily") { const d = document.getElementById("reportDate").value || new Date().toISOString().split("T")[0]; start = new Date(d); end = new Date(d); end.setDate(end.getDate() + 1); }
   else if (period === "weekly") { const d = document.getElementById("reportWeekDate").value; start = new Date(d); end = new Date(d); end.setDate(end.getDate() + 7); }
@@ -469,6 +521,7 @@ function generateReport() {
       const rows = [];
       snap.forEach(doc => {
         const d = doc.data();
+        if (roomFilter !== "all" && (d.room || "-") !== roomFilter) return;
         totalPickup++;
         totalWeight += d.berat || 0;
         totalProcessed += d.diolah || 0;
@@ -482,8 +535,8 @@ function generateReport() {
       const tbody = document.getElementById("reportTableBody");
       if (tbody) {
         tbody.innerHTML = rows.length ? rows.map(r => `
-          <tr><td>${r.tanggal}</td><td>${r.jenis}</td><td>${r.berat} kg</td><td>${r.diolah} kg</td><td>${r.residu} kg</td><td>${r.petugas}</td></tr>
-        `).join("") : '<tr><td colspan="6" style="text-align:center;padding:15px;color:#888">Tidak ada data di periode ini</td></tr>';
+          <tr><td>${r.tanggal}</td><td><b>${r.room || "-"}</b></td><td>${r.jenis}</td><td>${r.berat} kg</td><td>${r.diolah} kg</td><td>${r.residu} kg</td><td>${r.petugas}</td></tr>
+        `).join("") : '<tr><td colspan="7" style="text-align:center;padding:15px;color:#888">Tidak ada data di periode ini</td></tr>';
       }
     });
 }
@@ -526,7 +579,6 @@ function loadPublicData() {
     });
 }
 
-// ═══ v14: splash dipercepat (2000ms → 800ms) ═══
 window.addEventListener("load", () => {
   setTimeout(() => {
     const splash = document.getElementById("splashScreen");
@@ -562,3 +614,4 @@ window.generateReport = generateReport;
 window.toggleCustomDate = toggleCustomDate;
 window.deleteRoute = deleteRoute;
 window.updateFileListUI = updateFileListUI;
+window.initRoomSelects = initRoomSelects;
