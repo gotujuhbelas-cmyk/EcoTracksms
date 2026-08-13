@@ -115,6 +115,7 @@
       <a href="#dashInput" id="navInput">➕ Input</a>
       <a href="#dashData" id="navData">📋 Data</a>
       <a href="#dashReport" id="navReport">📊 Laporan</a>
+      <a href="#dashManage" id="navManage">⚙️ Manajemen</a>
       <div class="user-info"><span>👤</span><span id="dashEmail">-</span><span class="role-badge" id="roleBadge">USER</span></div>
       <button onclick="doFirebaseLogout()">🚪 Logout</button>
     </div>
@@ -160,6 +161,7 @@
       <div class="info-box">💡 Foto otomatis dikompresi + timestamp. Max 5 foto.</div>
       <form onsubmit="addData(event)">
         <div class="form-grid">
+          <div class="form-group"><label>Waste Room *</label><select id="fRoom" required><option value="">-- Pilih Waste Room --</option></select></div>
           <div class="form-group"><label>Tanggal *</label><input type="date" id="fTanggal" required></div>
           <div class="form-group"><label>Jenis *</label><select id="fJenis" required><option value="">-- Pilih --</option><option>Organik</option><option>Anorganik</option><option>B3</option><option>Campuran</option></select></div>
           <div class="form-group"><label>Berat (kg) *</label><input type="number" id="fBerat" step="0.1" required></div>
@@ -197,7 +199,7 @@
     <div id="dashData" class="section">
       <h2>📋 Daftar Data</h2>
       <div class="table-wrapper"><table>
-        <thead><tr><th>Tanggal</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th><th>Foto</th><th id="thAksi">Aksi</th></tr></thead>
+        <thead><tr><th>Tanggal</th><th>Room</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th><th>Foto</th><th id="thAksi">Aksi</th></tr></thead>
         <tbody id="dashDataTable"></tbody>
       </table></div>
     </div>
@@ -206,6 +208,7 @@
       <h2>📊 Laporan</h2>
       <div class="report-filter">
         <div class="form-group"><label>Periode</label><select id="reportPeriod" onchange="toggleCustomDate()"><option value="daily">Harian</option><option value="weekly">Mingguan</option><option value="monthly">Bulanan</option><option value="custom">Custom</option></select></div>
+        <div class="form-group" id="reportRoomGroup"><label>Waste Room</label><select id="reportRoom" onchange="generateReport()"><option value="all">Semua Waste Room</option></select></div>
         <div class="form-group" id="dailyDateGroup"><label>Tanggal</label><input type="date" id="reportDate" onchange="generateReport()"></div>
         <div class="form-group hidden" id="weeklyDateGroup"><label>Minggu</label><input type="date" id="reportWeekDate" onchange="generateReport()"></div>
         <div class="form-group hidden" id="monthlyDateGroup"><label>Bulan</label><input type="month" id="reportMonth" onchange="generateReport()"></div>
@@ -221,9 +224,64 @@
       </div>
       <div style="margin-bottom:25px"><h3 style="color:var(--primary)">📈 Tren</h3><div class="chart-container"><canvas id="reportChart"></canvas></div></div>
       <div class="table-wrapper"><table>
-        <thead><tr><th>Tanggal</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th></tr></thead>
+        <thead><tr><th>Tanggal</th><th>Room</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th></tr></thead>
         <tbody id="reportTableBody"></tbody>
       </table></div>
+    </div>
+
+    <!-- ═══ v16: PANEL MANAJEMEN (ADMIN) ═══ -->
+    <div id="dashManage" class="section">
+      <h2>⚙️ Manajemen</h2>
+      <div class="info-box">🔐 Menu ini hanya tampil untuk role <b>admin</b>. Kelola akun, waste room, dan client tanpa membuka Firebase.</div>
+
+      <div class="form-grid" style="margin-top:15px">
+        <!-- ─── Buat Akun ─── -->
+        <div class="card" style="box-shadow:none;border:1px solid var(--line,#e5e7eb)">
+          <h3 style="margin:0 0 10px">👥 Buat Akun Baru</h3>
+          <form onsubmit="submitNewAccount(event)">
+            <div class="form-group"><label>Email *</label><input type="email" id="mEmail" required placeholder="user@rezekiamanahjaya.com"></div>
+            <div class="form-group"><label>Password * (min 6)</label><input type="text" id="mPass" required placeholder="contoh: RajSms2026!"></div>
+            <div class="form-grid">
+              <div class="form-group"><label>Role *</label>
+                <select id="mRole" onchange="toggleMRoom()">
+                  <option value="user">user (lihat room sendiri)</option>
+                  <option value="driver">driver</option>
+                  <option value="admin">admin</option>
+                </select>
+              </div>
+              <div class="form-group" id="mRoomGroup"><label>Waste Room</label><select id="mRoom"><option value="ALL">ALL — Semua Room</option></select></div>
+            </div>
+            <button type="submit" class="btn w100" style="width:100%">➕ Buat Akun</button>
+          </form>
+        </div>
+
+        <!-- ─── Tambah Room / Client ─── -->
+        <div class="card" style="box-shadow:none;border:1px solid var(--line,#e5e7eb)">
+          <h3 style="margin:0 0 10px">🏢 Waste Room & Client</h3>
+          <form onsubmit="submitNewRoom(event)">
+            <div class="form-group"><label>Nama Waste Room Baru *</label><input type="text" id="mRoomNama" placeholder="cth: WR Lantai 3"></div>
+            <div class="form-group"><label>Client</label><select id="mRoomClient"></select></div>
+            <button type="submit" class="btn w100" style="width:100%;background:#1565c0">➕ Tambah Waste Room</button>
+          </form>
+          <form onsubmit="submitNewClient(event)" style="margin-top:12px">
+            <div class="form-group"><label>Nama Client Baru *</label><input type="text" id="mClientNama" placeholder="cth: The Hood, AEON Mall"></div>
+            <button type="submit" class="btn w100" style="width:100%;background:#6a1b9a">➕ Tambah Client</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ─── Daftar Akun ─── -->
+      <h3 style="margin:25px 0 10px;color:var(--primary)">👥 Daftar Akun</h3>
+      <div class="table-wrapper"><table>
+        <thead><tr><th>Email</th><th>Role</th><th>Akses Room</th><th>UID</th></tr></thead>
+        <tbody id="usersTableBody"></tbody>
+      </table></div>
+
+      <!-- ─── Daftar Room & Client ─── -->
+      <h3 style="margin:25px 0 10px;color:var(--primary)">🤝 Client Terdaftar</h3>
+      <div id="clientChips"></div>
+      <h3 style="margin:20px 0 10px;color:var(--primary)">🏢 Waste Room Terdaftar</h3>
+      <div id="roomChips"></div>
     </div>
   </div>
   <div class="footer"><p>EcoTRACK © 2025</p></div>
@@ -281,13 +339,13 @@
 </div>
 
 <!-- ═══════════════════════════════════════════
-     SCRIPTS — URUTAN WAJIB (cache buster v10)
+     SCRIPTS — URUTAN WAJIB (v16 panel manajemen)
 ═══════════════════════════════════════════ -->
-<script src="app.js?v=14"></script>
+<script src="app.js?v=16"></script>
 <script src="antimacet.js?v=17"></script>
 <script src="amview.js?v=9"></script>
 <script src="adminctl.js?v=9"></script>
-<script src="addon.js?v=12"></script>
+<script src="addon.js?v=13"></script>
 
 <!-- PWA Service Worker -->
 <script>
@@ -362,7 +420,6 @@ function openCamera() {
   var video = document.getElementById('cameraVideo');
   
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    // Fallback: buka file picker dengan capture kamera
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -385,7 +442,6 @@ function openCamera() {
   })
   .catch(function(err) {
     console.error('Camera error:', err);
-    // Fallback ke file picker
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -404,24 +460,20 @@ function capturePhoto() {
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0);
   
-  // Tambahkan timestamp di foto
   var now = new Date();
   var timestamp = now.toLocaleString('id-ID', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
   
-  // Background untuk timestamp
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
   
-  // Teks timestamp
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'left';
   ctx.fillText('📅 ' + timestamp, 10, canvas.height - 12);
   
-  // Convert ke blob
   canvas.toBlob(function(blob) {
     var file = new File([blob], 'foto_' + Date.now() + '.jpg', { type: 'image/jpeg' });
     capturedPhotos.push(file);
@@ -453,7 +505,6 @@ function updateFileList() {
   }).join('');
 }
 
-// Override handleFileSelect untuk include captured photos
 var originalHandleFileSelect = window.handleFileSelect;
 window.handleFileSelect = function(e) {
   var files = Array.from(e.target.files).slice(0, 5);
@@ -490,12 +541,10 @@ window.handleFileSelect = function(e) {
         
         var isShowing = navLinks.classList.contains('show');
         
-        // Tutup semua menu dulu
         document.querySelectorAll('.nav-links.show').forEach(function(m) {
           m.classList.remove('show');
         });
         
-        // Toggle menu ini
         if (!isShowing) {
           navLinks.classList.add('show');
         }
@@ -504,7 +553,6 @@ window.handleFileSelect = function(e) {
       });
     });
     
-    // Tutup saat klik di luar
     document.addEventListener('click', function(e) {
       if (!e.target.closest('.nav-links') && !e.target.closest('.menu-toggle')) {
         document.querySelectorAll('.nav-links.show').forEach(function(m) {
@@ -513,7 +561,6 @@ window.handleFileSelect = function(e) {
       }
     });
     
-    // Tutup saat klik link
     document.querySelectorAll('.nav-links a, .nav-links button').forEach(function(el) {
       el.addEventListener('click', function() {
         var nav = el.closest('.nav-links');
@@ -524,7 +571,6 @@ window.handleFileSelect = function(e) {
     console.log('✅ Hamburger menu initialized:', toggles.length, 'buttons');
   }
   
-  // Jalankan berkali-kali sampai berhasil
   var attempts = 0;
   function tryInit() {
     attempts++;
