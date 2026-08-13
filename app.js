@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════
-// app.js — EcoTRACK SMS v16 (PANEL MANAJEMEN: akun, room, client)
-console.log("%cAPP.JS SMS v16 — panel manajemen aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
+// app.js — EcoTRACK SMS v17 (SECTION PER ROLE — privasi room)
+console.log("%cAPP.JS SMS v17 — section per role aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
 // ══════════════════════════════════════════════════════════════
 
 const firebaseConfig = {
@@ -16,7 +16,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-// ═══ v16: SETTINGS DINAMIS (room & client tersimpan di Firestore) ═══
+// ═══ SETTINGS DINAMIS (room & client tersimpan di Firestore) ═══
 let SETTINGS = {
   clients: ["Summarecon Mall Serpong"],
   rooms: [
@@ -185,20 +185,32 @@ auth.onAuthStateChanged(user => {
   } else { currentUser = null; currentRole = null; window.__roomLock = null; }
 });
 
+// ═══ v17: SECTION + NAV disembunyikan sesuai role ═══
 function applyRoleUI(role) {
+  const show = (el, on) => { if (el) el.style.display = on ? "" : "none"; };
   const navInput = document.getElementById("navInput");
   const navShare = document.getElementById("navShare");
   const thAksi = document.getElementById("thAksi");
   const navManage = document.getElementById("navManage");
-  if (role === "admin") { if (navInput) navInput.style.display = ""; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = ""; if (navManage) navManage.style.display = ""; }
-  else if (role === "driver") { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = "none"; if (navManage) navManage.style.display = "none"; }
-  else { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = "none"; if (thAksi) thAksi.style.display = "none"; if (navManage) navManage.style.display = "none"; }
+  const secInput = document.getElementById("dashInput");
+  const secShare = document.getElementById("dashShare");
+  const secManage = document.getElementById("dashManage");
+
+  if (role === "admin") {
+    show(navInput, true);  show(navShare, true);  show(thAksi, true);  show(navManage, true);
+    show(secInput, true);  show(secShare, true);  show(secManage, true);
+  } else if (role === "driver") {
+    show(navInput, true);  show(navShare, true);  show(thAksi, false); show(navManage, false);
+    show(secInput, true);  show(secShare, true);  show(secManage, false);
+  } else {
+    show(navInput, false); show(navShare, false); show(thAksi, false); show(navManage, false);
+    show(secInput, false); show(secShare, false); show(secManage, false);
+  }
 
   const repRoomGroup = document.getElementById("reportRoomGroup");
   if (repRoomGroup) repRoomGroup.style.display = roomLocked() ? "none" : "";
 }
 
-// ═══ v16: dropdown room dinamis dari SETTINGS ═══
 function initRoomSelects() {
   const f = document.getElementById("fRoom");
   const r = document.getElementById("reportRoom");
@@ -568,10 +580,9 @@ function generateReport() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ⚙️ v16: PANEL MANAJEMEN (khusus admin)
+// ⚙️ PANEL MANAJEMEN (khusus admin)
 // ══════════════════════════════════════════════════════════════
 
-// ─── Buat akun tanpa logout (pakai app sekunder) ───
 let secondaryApp = null;
 function getSecondaryAuth() {
   try {
@@ -634,7 +645,6 @@ function loadUsersList() {
   }).catch(err => console.warn("[users]", err));
 }
 
-// ─── Tambah waste room & client ───
 function saveSettings() {
   return db.collection("settings").doc("main").set({ rooms: SETTINGS.rooms, clients: SETTINGS.clients });
 }
