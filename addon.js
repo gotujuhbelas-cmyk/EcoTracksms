@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════
-// addon.js — EcoTRACK SMS v12: RATING PELAYANAN
-console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-weight:bold");
+// addon.js — EcoTRACK SMS v13: RATING + ROOM + MULTI CLIENT
+console.log("%cADDON SMS v13 — room & multi client aktif", "color:#6a1b9a;font-weight:bold");
 // ══════════════════════════════════════════════════════════════
 
 (function() {
@@ -8,7 +8,18 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
   const BASE_URL = window.location.origin;
 
   const ALAMAT_KOP = "Cluster Puri Flamingo FLA 06/19, Sukamantri, Pasar Kemis, Kab. Tangerang &mdash; HP. 081296580968";
-  const KEPADA_HTML = "Kepada Yth.<br><b>Pengelola Summarecon Mall Serpong</b><br><b>Serpong</b><br>di<br><b>Tempat</b>";
+
+  // v13: client dinamis per room (fallback SMS)
+  function clientOf(room) {
+    if (typeof window.__roomClient === "function") {
+      const c = window.__roomClient(room);
+      if (c) return c;
+    }
+    return "Summarecon Mall Serpong";
+  }
+  function kepadaHTML(client) {
+    return "Kepada Yth.<br><b>Pengelola " + client + "</b><br>di<br><b>Tempat</b>";
+  }
 
   const SIGN = {
     ttdP: localStorage.getItem("raj_ttdP") || null,
@@ -257,9 +268,7 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
     document.getElementById("signModal").style.display = "flex";
   }
 
-  // ════════════════════════════════════════════════════════════
-  // ⭐ FITUR RATING PELAYANAN
-  // ════════════════════════════════════════════════════════════
+  // ═══ RATING PELAYANAN ═══
   const RATING_AUTO_MS = 24 * 60 * 60 * 1000;
 
   function ensureRatingForSampah() {
@@ -474,26 +483,27 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
     setInterval(tick, 60000);
   })();
 
-  // ═══ 1) EXPORT CSV ═══
+  // ═══ 1) EXPORT CSV (v13: + kolom Room) ═══
   window.exportReportCSV = function() {
     const tbody = document.getElementById("reportTableBody");
     if (!tbody || !tbody.rows.length) {
       if (typeof toast === "function") toast("Generate laporan dulu.", "warning");
       return;
     }
-    const rows = [["Tanggal", "Jenis", "Berat (kg)", "Diolah (kg)", "Residu (kg)", "Petugas"]];
+    const rows = [["Tanggal", "Room", "Jenis", "Berat (kg)", "Diolah (kg)", "Residu (kg)", "Petugas"]];
     Array.from(tbody.rows).forEach(tr => {
       const c = tr.cells;
-      if (c.length >= 6) {
-        rows.push([c[0].innerText, c[1].innerText, c[2].innerText, c[3].innerText, c[4].innerText, c[5].innerText]);
+      if (c.length >= 7) {
+        rows.push([c[0].innerText, c[1].innerText, c[2].innerText, c[3].innerText, c[4].innerText, c[5].innerText, c[6].innerText]);
       }
     });
     const period = document.getElementById("reportPeriod") ? document.getElementById("reportPeriod").value : "custom";
-    downloadCSV("EcoTRACK-SMS-Laporan-" + period + "-" + new Date().toISOString().slice(0, 10) + ".csv", rows);
+    const roomTag = window.__roomLabel ? "-" + window.__roomLabel.replace(/\s+/g, "_") : "";
+    downloadCSV("EcoTRACK-SMS-Laporan-" + period + roomTag + "-" + new Date().toISOString().slice(0, 10) + ".csv", rows);
     if (typeof toast === "function") toast("📥 Laporan di-export! Buka file CSV di Excel.", "success");
   };
 
-  // ═══ 2) CETAK LAPORAN ═══
+  // ═══ 2) CETAK LAPORAN (v13: + kolom Room + judul room) ═══
   window.printReport = function() {
     const tbody = document.getElementById("reportTableBody");
     if (!tbody || !tbody.rows.length) {
@@ -502,12 +512,14 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
     }
     const g = id => { const el = document.getElementById(id); return el ? el.textContent : "0"; };
 
-    let rowsHtml = "<tr><th>Tanggal</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th></tr>";
+    let rowsHtml = "<tr><th>Tanggal</th><th>Room</th><th>Jenis</th><th>Berat</th><th>Diolah</th><th>Residu</th><th>Petugas</th></tr>";
     Array.from(tbody.rows).forEach(tr => {
       const c = tr.cells;
-      rowsHtml += "<tr><td>" + c[0].innerText + "</td><td>" + c[1].innerText + "</td><td>" + c[2].innerText +
-        "</td><td>" + c[3].innerText + "</td><td>" + c[4].innerText + "</td><td>" + c[5].innerText + "</td></tr>";
+      rowsHtml += "<tr><td>" + c[0].innerText + "</td><td>" + c[1].innerText + "</td><td>" + c[2].innerText + "</td><td>" + c[3].innerText +
+        "</td><td>" + c[4].innerText + "</td><td>" + c[5].innerText + "</td><td>" + c[6].innerText + "</td></tr>";
     });
+
+    const judul = "LAPORAN PENGAMBILAN & PENGOLAHAN SAMPAH" + (window.__roomLabel ? " — " + window.__roomLabel.toUpperCase() : "");
 
     const body =
       "<p style=\"text-align:right;margin:0 0 12px\">Tangerang, " + longDate() + "</p>" +
@@ -520,12 +532,12 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
       '<div><p>Mengetahui,</p><div class="space">' + (SIGN.stR ? '<img class="stempel" src="' + SIGN.stR + '">' : '') + (SIGN.ttdR ? '<img class="ttd" src="' + SIGN.ttdR + '">' : '') + '</div><p><b>( ........................ )</b><br>Manajer Operasional</p></div></div>';
 
     const w = window.open("", "_blank");
-    w.document.write(printShell("LAPORAN PENGAMBILAN & PENGOLAHAN SAMPAH", body));
+    w.document.write(printShell(judul, body));
     w.document.close();
     w.focus();
   };
 
-  // ═══ 3) SURAT JALAN ═══
+  // ═══ 3) SURAT JALAN (v13: + waste room + client dinamis) ═══
   window.printSuratJalan = function(docId) {
     pendingDocId = docId;
     openSignModal();
@@ -538,6 +550,7 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
       const d = doc.data();
 
       const doPrint = (nomor) => {
+        const client = clientOf(d.room);
         const fotos = d.fotos || d.foto || [];
         let fotoHtml = "";
         if (fotos.length) {
@@ -563,17 +576,18 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
           '</table></td>' +
           '<td style="vertical-align:top;text-align:right">Tangerang, ' + longDate(d.tanggal) + '</td>' +
           '</tr></table>' +
-          '<p style="margin:18px 0 0">' + KEPADA_HTML + '</p>' +
+          '<p style="margin:18px 0 0">' + kepadaHTML(client) + '</p>' +
           '<p style="text-indent:40px">Dengan hormat,</p>' +
           '<p style="text-indent:40px">Sehubungan dengan kegiatan pengangkutan sampah yang dilaksanakan oleh <b>CV Rezeki Amanah Jaya Group</b>, bersama ini kami sampaikan rincian pengambilan sebagai berikut:</p>' +
           '<table class="doc" style="margin-top:8px">' +
           "<tr><td style=\"width:150px\">Tanggal</td><td>: " + longDate(d.tanggal) + "</td></tr>" +
           "<tr><td>Jenis Sampah</td><td>: " + (d.jenis || "-") + "</td></tr>" +
+          "<tr><td>Waste Room</td><td>: " + (d.room || "-") + "</td></tr>" +
           "<tr><td>Berat</td><td>: " + (d.berat || 0) + " kg</td></tr>" +
           "<tr><td>Diolah</td><td>: " + (d.diolah || 0) + " kg</td></tr>" +
           "<tr><td>Residu</td><td>: " + (d.residu || 0) + " kg</td></tr>" +
           "<tr><td>Petugas / Driver</td><td>: " + (d.petugas || "-") + "</td></tr>" +
-          "<tr><td>Lokasi Asal</td><td>: Summarecon Mall Serpong</td></tr>" +
+          "<tr><td>Lokasi Asal</td><td>: " + (d.room || "-") + ", " + client + "</td></tr>" +
           "<tr><td>Tujuan</td><td>: Fasilitas Pengolahan CV Rezeki Amanah Jaya Group</td></tr>" +
           "<tr><td>Catatan</td><td>: " + (d.catatan || "-") + "</td></tr>" +
           "</table>" +
@@ -605,7 +619,7 @@ console.log("%cADDON SMS v12 — rating pelayanan aktif", "color:#6a1b9a;font-we
   function attachSuratJalanButtons() {
     const tbody = document.getElementById("dashDataTable");
     if (!tbody || !tbody.rows.length || typeof db === "undefined") return;
-    db.collection("sampah").orderBy("createdAt", "desc").limit(50).get().then(snap => {
+    db.collection("sampah").orderBy("createdAt", "desc").limit(100).get().then(snap => {
       const ids = [];
       snap.forEach(doc => ids.push(doc.id));
       Array.from(tbody.rows).forEach((tr, i) => {
