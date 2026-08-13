@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════════════
-// app.js — EcoTRACK SMS v15 (WASTE ROOM + ROLE PER ROOM)
-console.log("%cAPP.JS SMS v15 — waste room aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
+// app.js — EcoTRACK SMS v16 (PANEL MANAJEMEN: akun, room, client)
+console.log("%cAPP.JS SMS v16 — panel manajemen aktif", "color:#2e7d32;font-weight:bold;font-size:14px");
 // ══════════════════════════════════════════════════════════════
 
 const firebaseConfig = {
@@ -16,8 +16,35 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-// ═══ v15: DAFTAR WASTE ROOM ═══
-const ROOMS = ["WR Pasar modern SMS", "WR SMS 1", "WR SMS 2"];
+// ═══ v16: SETTINGS DINAMIS (room & client tersimpan di Firestore) ═══
+let SETTINGS = {
+  clients: ["Summarecon Mall Serpong"],
+  rooms: [
+    { nama: "WR Pasar modern SMS", client: "Summarecon Mall Serpong" },
+    { nama: "WR SMS 1", client: "Summarecon Mall Serpong" },
+    { nama: "WR SMS 2", client: "Summarecon Mall Serpong" }
+  ]
+};
+
+function loadSettings(cb) {
+  db.collection("settings").doc("main").get().then(doc => {
+    if (doc.exists && doc.data().rooms && doc.data().rooms.length) {
+      SETTINGS.rooms = doc.data().rooms;
+      SETTINGS.clients = doc.data().clients || SETTINGS.clients;
+    } else {
+      db.collection("settings").doc("main").set(SETTINGS).catch(() => {});
+    }
+    initRoomSelects();
+    if (typeof renderSettingsLists === "function") renderSettingsLists();
+    if (cb) cb();
+  }).catch(() => { initRoomSelects(); if (cb) cb(); });
+}
+
+// Dipakai addon.js untuk alamat surat jalan per client
+window.__roomClient = function(room) {
+  const r = SETTINGS.rooms.find(x => x.nama === room);
+  return r ? r.client : "";
+};
 
 let currentUser = null;
 let currentRole = null;
@@ -125,7 +152,6 @@ function doFirebaseLogout() {
   auth.signOut().then(() => { localStorage.removeItem("am_session"); toast("Logout berhasil.", "info"); showPublic(); });
 }
 
-// ═══ v15: detect role + room ═══
 function detectRole(user) {
   return db.collection("users").doc(user.uid).get()
     .then(doc => {
@@ -154,6 +180,7 @@ auth.onAuthStateChanged(user => {
       if (brand) brand.textContent = role === "admin" ? "Admin Panel" : role === "driver" ? "Driver Panel" : "Dashboard";
       loadDashboardStats();
       loadDashData();
+      if (role === "admin") { loadUsersList(); renderSettingsLists(); }
     });
   } else { currentUser = null; currentRole = null; window.__roomLock = null; }
 });
@@ -162,22 +189,26 @@ function applyRoleUI(role) {
   const navInput = document.getElementById("navInput");
   const navShare = document.getElementById("navShare");
   const thAksi = document.getElementById("thAksi");
-  if (role === "admin") { if (navInput) navInput.style.display = ""; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = ""; }
-  else if (role === "driver") { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = "none"; }
-  else { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = "none"; if (thAksi) thAksi.style.display = "none"; }
+  const navManage = document.getElementById("navManage");
+  if (role === "admin") { if (navInput) navInput.style.display = ""; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = ""; if (navManage) navManage.style.display = ""; }
+  else if (role === "driver") { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = ""; if (thAksi) thAksi.style.display = "none"; if (navManage) navManage.style.display = "none"; }
+  else { if (navInput) navInput.style.display = "none"; if (navShare) navShare.style.display = "none"; if (thAksi) thAksi.style.display = "none"; if (navManage) navManage.style.display = "none"; }
 
-  // v15: user ter-lock room → sembunyikan filter room di laporan
   const repRoomGroup = document.getElementById("reportRoomGroup");
   if (repRoomGroup) repRoomGroup.style.display = roomLocked() ? "none" : "";
 }
 
-// ═══ v15: isi dropdown room ═══
+// ═══ v16: dropdown room dinamis dari SETTINGS ═══
 function initRoomSelects() {
   const f = document.getElementById("fRoom");
   const r = document.getElementById("reportRoom");
-  const opts = ROOMS.map(x => '<option value="' + x + '">' + x + "</option>").join("");
+  const opts = SETTINGS.rooms.map(x => '<option value="' + x.nama + '">' + x.nama + "</option>").join("");
   if (f) f.innerHTML = '<option value="">-- Pilih Waste Room --</option>' + opts;
   if (r) r.innerHTML = '<option value="all">Semua Waste Room</option>' + opts;
+  const mRoom = document.getElementById("mRoom");
+  if (mRoom) mRoom.innerHTML = '<option value="ALL">ALL — Semua Room</option>' + opts;
+  const mRoomClient = document.getElementById("mRoomClient");
+  if (mRoomClient) mRoomClient.innerHTML = SETTINGS.clients.map(c => '<option value="' + c + '">' + c + "</option>").join("");
 }
 
 function showDashboard(user, role) {
@@ -273,7 +304,6 @@ function deleteRoute(docId) {
     .catch(err => toast("Gagal hapus: " + err.message, "error"));
 }
 
-// ═══ v15: statistik ikut filter room user ═══
 function loadDashboardStats() {
   db.collection("sampah").get()
     .then(snap => {
@@ -295,7 +325,6 @@ function loadDashboardStats() {
       ];
       ids.forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.textContent = val; });
 
-      // public tetap gabungan semua room
       let pPickup = 0, pWeight = 0, pProc = 0, pRes = 0;
       snap.forEach(doc => {
         const d = doc.data();
@@ -355,7 +384,6 @@ function fileToBase64(file) {
   });
 }
 
-// ═══ v15: simpan field room ═══
 async function addData(e) {
   e.preventDefault();
   const room = document.getElementById("fRoom").value;
@@ -401,7 +429,6 @@ async function addData(e) {
   }
 }
 
-// ═══ v15: tabel data + kolom room + filter role ═══
 function loadDashData() {
   const tbody = document.getElementById("dashDataTable");
   if (!tbody) return;
@@ -499,7 +526,6 @@ function toggleCustomDate() {
   document.getElementById("customDateGroup2").classList.toggle("hidden", period !== "custom");
 }
 
-// ═══ v15: laporan per waste room ═══
 function generateReport() {
   const period = document.getElementById("reportPeriod").value;
   const roomSel = document.getElementById("reportRoom");
@@ -541,6 +567,114 @@ function generateReport() {
     });
 }
 
+// ══════════════════════════════════════════════════════════════
+// ⚙️ v16: PANEL MANAJEMEN (khusus admin)
+// ══════════════════════════════════════════════════════════════
+
+// ─── Buat akun tanpa logout (pakai app sekunder) ───
+let secondaryApp = null;
+function getSecondaryAuth() {
+  try {
+    if (!secondaryApp) secondaryApp = firebase.initializeApp(firebaseConfig, "secondary");
+    return secondaryApp.auth();
+  } catch (e) {
+    return firebase.app("secondary").auth();
+  }
+}
+
+function createAccount(email, pass, role, room) {
+  const secAuth = getSecondaryAuth();
+  return secAuth.createUserWithEmailAndPassword(email, pass).then(cred => {
+    const uid = cred.user.uid;
+    return db.collection("users").doc(uid).set({ role: role, room: room || "", email: email })
+      .then(() => secAuth.signOut().then(() => uid));
+  });
+}
+
+function submitNewAccount(e) {
+  e.preventDefault();
+  if ((window.currentUserRole || "") !== "admin") { toast("Hanya admin yang dapat mengelola akun.", "error"); return; }
+  const email = document.getElementById("mEmail").value.trim();
+  const pass = document.getElementById("mPass").value;
+  const role = document.getElementById("mRole").value;
+  const room = role === "user" ? document.getElementById("mRoom").value : "";
+  if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { toast("Email tidak valid.", "warning"); return; }
+  if (pass.length < 6) { toast("Password minimal 6 karakter.", "warning"); return; }
+  if (role === "user" && !room) { toast("Pilih room untuk akun user.", "warning"); return; }
+  showLoading("Membuat akun...");
+  createAccount(email, pass, role, room)
+    .then(() => {
+      hideLoading();
+      toast("Akun " + role + " (" + email + ") berhasil dibuat! ✅", "success");
+      document.getElementById("mEmail").value = "";
+      document.getElementById("mPass").value = "";
+      loadUsersList();
+    })
+    .catch(err => { hideLoading(); toast("Gagal membuat akun: " + err.message, "error"); });
+}
+
+function toggleMRoom() {
+  const role = document.getElementById("mRole").value;
+  const grp = document.getElementById("mRoomGroup");
+  if (grp) grp.style.display = role === "user" ? "" : "none";
+}
+
+function loadUsersList() {
+  const tbody = document.getElementById("usersTableBody");
+  if (!tbody) return;
+  db.collection("users").get().then(snap => {
+    tbody.innerHTML = "";
+    if (snap.empty) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#888">Belum ada akun.</td></tr>'; return; }
+    snap.forEach(doc => {
+      const d = doc.data();
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + (d.email || "-") + "</td><td><b>" + (d.role || "-").toUpperCase() + "</b></td><td>" + (d.room ? d.room : "🌐 Semua room") + "</td><td style='color:#888;font-size:11px' class='mono'>" + doc.id.slice(0, 10) + "…</td>";
+      tbody.appendChild(tr);
+    });
+  }).catch(err => console.warn("[users]", err));
+}
+
+// ─── Tambah waste room & client ───
+function saveSettings() {
+  return db.collection("settings").doc("main").set({ rooms: SETTINGS.rooms, clients: SETTINGS.clients });
+}
+
+function submitNewRoom(e) {
+  e.preventDefault();
+  if ((window.currentUserRole || "") !== "admin") { toast("Hanya admin.", "error"); return; }
+  const nama = document.getElementById("mRoomNama").value.trim();
+  const client = document.getElementById("mRoomClient").value;
+  if (!nama) { toast("Nama waste room wajib diisi.", "warning"); return; }
+  if (SETTINGS.rooms.find(r => r.nama === nama)) { toast("Waste room sudah ada.", "warning"); return; }
+  SETTINGS.rooms.push({ nama: nama, client: client });
+  saveSettings().then(() => {
+    toast("Waste room '" + nama + "' ditambahkan! 🏢", "success");
+    document.getElementById("mRoomNama").value = "";
+    initRoomSelects(); renderSettingsLists(); loadSettings();
+  }).catch(err => toast("Gagal simpan: " + err.message, "error"));
+}
+
+function submitNewClient(e) {
+  e.preventDefault();
+  if ((window.currentUserRole || "") !== "admin") { toast("Hanya admin.", "error"); return; }
+  const nama = document.getElementById("mClientNama").value.trim();
+  if (!nama) { toast("Nama client wajib diisi.", "warning"); return; }
+  if (SETTINGS.clients.find(c => c === nama)) { toast("Client sudah ada.", "warning"); return; }
+  SETTINGS.clients.push(nama);
+  saveSettings().then(() => {
+    toast("Client '" + nama + "' ditambahkan! 🤝", "success");
+    document.getElementById("mClientNama").value = "";
+    initRoomSelects(); renderSettingsLists();
+  }).catch(err => toast("Gagal simpan: " + err.message, "error"));
+}
+
+function renderSettingsLists() {
+  const rc = document.getElementById("clientChips");
+  if (rc) rc.innerHTML = SETTINGS.clients.map(c => '<span style="display:inline-block;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;margin:3px">🤝 ' + c + "</span>").join("");
+  const rr = document.getElementById("roomChips");
+  if (rr) rr.innerHTML = SETTINGS.rooms.map(r => '<span style="display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;margin:3px">🏢 ' + r.nama + ' <small style="color:#888">(' + r.client + ")</small></span>").join("");
+}
+
 function loadPublicChart() {
   const ctx = document.getElementById("pubChart");
   if (!ctx) return;
@@ -580,6 +714,7 @@ function loadPublicData() {
 }
 
 window.addEventListener("load", () => {
+  loadSettings();
   setTimeout(() => {
     const splash = document.getElementById("splashScreen");
     if (splash) splash.classList.add("fade-out");
@@ -615,3 +750,9 @@ window.toggleCustomDate = toggleCustomDate;
 window.deleteRoute = deleteRoute;
 window.updateFileListUI = updateFileListUI;
 window.initRoomSelects = initRoomSelects;
+window.submitNewAccount = submitNewAccount;
+window.toggleMRoom = toggleMRoom;
+window.submitNewRoom = submitNewRoom;
+window.submitNewClient = submitNewClient;
+window.loadUsersList = loadUsersList;
+window.renderSettingsLists = renderSettingsLists;
